@@ -3,7 +3,7 @@
 -- | Exhaustivity Checking Library (ECL)
 --
 ----------------------------------------
-module ECL.Check where
+module ECL.ECL where
 
 import Data.List (foldl', nub)
 import Control.Monad (liftM)
