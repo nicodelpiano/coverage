@@ -5,10 +5,8 @@
 ----------------------------------------
 module ECL.ECL
   ( check
-  , Literal(..)
   , Binder(..)
   , Guard(..)
-  , Uncovered(..)
   ) where
 
 import Data.List (foldl', nub)
@@ -18,32 +16,18 @@ type Name = String
 
 -- | A collection of binders, as used to match products, in product binders
 -- or collections of binders in top-level declarations.
-type Binders = [Binder]
-
--- |
--- Literals
---
-data Literal
-  = NumLit Int -- NumLit (Either Int Double)
-  | StrLit String
-  | CharLit Char
-  | BoolLit Bool
-  deriving (Show, Eq)
+type Binders lit = [Binder lit]
 
 -- |
 -- Binders
 --
-data Binder
-  = Var Name
-  | Lit Literal
-  | Tagged Name Binder
-  | Product Binders
-  | Record [(Name, Binder)]
+data Binder lit
+  = Var (Maybe Name)
+  | Lit lit
+  | Tagged Name (Binder lit)
+  | Product (Binders lit)
+  | Record [(Name, Binder lit)]
   deriving (Show, Eq)
-
--- | May be useful some of these defs
-boolean :: Bool -> Binder
-boolean = Lit . BoolLit
 
 -- | Guards and alternatives
 -- 
@@ -55,22 +39,18 @@ data Guard = CatchAll | Opaque
 
 -- | A case alternative consists of a collection of binders which match
 -- a collection of values, and an optional guard.
-type Alternative = (Binders, Maybe Guard)
+type Alternative lit = (Binders lit, Maybe Guard)
 
 -- | A list of uncovered cases
-newtype Uncovered = Uncovered { getUncovered :: [Binders] }
+newtype Uncovered lit = Uncovered { getUncovered :: [Binders lit] }
   deriving (Show, Eq) 
 
-uncovered :: [Binders] -> Uncovered
-uncovered = Uncovered
+applyUncovered :: ([Binders lit] -> [Binders lit]) -> Uncovered lit -> Uncovered lit
+applyUncovered f = Uncovered . f . getUncovered
 
-applyUncovered :: ([Binders] -> [Binders]) -> Uncovered -> Uncovered
-applyUncovered f = uncovered . f . getUncovered
-
--- |
--- `missingSingle` returns the uncovered set between two binders
---
-missingSingle :: Binder -> Binder -> Binders
+-- | Returns the uncovered set after one binder is applied to the set of
+-- values represented by another.
+missingSingle :: Binder lit -> Binder lit -> Binders lit
 missingSingle _ (Var _) = []
 missingSingle b@(Var _) (Tagged tag bc) =
   map (Tagged tag) $ missingSingle b bc
@@ -82,30 +62,21 @@ missingSingle (Var _) (Record bs) =
   where
   miss = getUncovered $ missingMultiple (initialize $ length bs) binders
   (names, binders) = unzip bs
-missingSingle b@(Var _) (Lit l) = missingSingleLit b l
-missingSingle b@(Lit _) (Lit l) = missingSingleLit b l
-missingSingle b _ = [b] -- incomplete
-
-missingSingleLit :: Binder -> Literal -> Binders
-missingSingleLit (Var _) (BoolLit b) = [boolean $ not b]
-missingSingleLit b@(Lit (BoolLit bl)) (BoolLit br)
-  | bl == br = []
-  | otherwise = [b]
-missingSingleLit b _ = [b]
+missingSingle b _ = [b] 
 
 -- |
 -- Generates a list of initial binders
 --
-initialize :: Int -> Binders
+initialize :: Int -> Binders lit
 initialize = flip replicate $ wildcard
   where
-  wildcard = Var "_"
+  wildcard = Var Nothing
 
 -- |
 -- `missingMultiple` returns the whole set of uncovered cases
 --
-missingMultiple :: Binders -> Binders -> Uncovered
-missingMultiple bs = uncovered . go bs
+missingMultiple :: Binders lit -> Binders lit -> Uncovered lit
+missingMultiple bs = Uncovered . go bs
   where
   go [] _ = []
   go (x:xs) (y:ys) = map (: xs) missed ++ fmap (x :) missed'
@@ -117,13 +88,13 @@ missingMultiple bs = uncovered . go bs
 -- |
 -- `missingCases` applies `missingMultiple` to an alternative
 --
-missingCases :: Binders -> Alternative -> Uncovered
+missingCases :: Binders lit -> Alternative lit -> Uncovered lit
 missingCases unc = missingMultiple unc . fst
 
 -- |
 -- `missingAlternative` is `missingCases` with guard handling
 --
-missingAlternative :: Alternative -> Binders -> [Binders]
+missingAlternative :: Alternative lit -> Binders lit -> [Binders lit]
 missingAlternative alt unc
   | isExhaustiveGuard $ snd alt = getUncovered mcases
   | otherwise = [unc]
@@ -137,10 +108,10 @@ missingAlternative alt unc
 -- |
 -- Given a list of alternatives, `check` generates the proper set of uncovered cases
 --
-check :: [Alternative] -> Uncovered
-check cas = applyUncovered nub $ foldl' step (Uncovered [initial]) cas
+check :: (Eq lit) => [Alternative lit] -> [Binders lit]
+check cas = getUncovered . applyUncovered nub . foldl' step (Uncovered [initial]) $ cas
   where
   initial = initialize $ length . fst . head $ cas
 
-  step :: Uncovered -> Alternative -> Uncovered
+  step :: Uncovered lit -> Alternative lit -> Uncovered lit
   step unc ca = applyUncovered (concatMap (missingAlternative ca)) unc
