@@ -3,13 +3,21 @@
 -- | Exhaustivity Checking Library (ECL)
 --
 ----------------------------------------
-module ECL.ECL where
+module ECL.ECL
+  ( check
+  , Literal(..)
+  , Binder(..)
+  , Guard(..)
+  , Uncovered(..)
+  ) where
 
 import Data.List (foldl', nub)
-import Control.Monad (liftM)
 
 -- | Type synonyms: names and lists of binders
 type Name = String
+
+-- | A collection of binders, as used to match products, in product binders
+-- or collections of binders in top-level declarations.
 type Binders = [Binder]
 
 -- |
@@ -37,20 +45,19 @@ data Binder
 boolean :: Bool -> Binder
 boolean = Lit . BoolLit
 
--- |
--- Expressions
---
-data Expr
-  = BoolExpr Bool
-  deriving (Show, Eq)
-
 -- | Guards and alternatives
+-- 
+-- Guard are abstract, and it is up to the language implementor to interpret
+-- guards abstractly. Guards can catch all cases, or represent some opaque
+-- expression which cannot be analysed.
 data Guard = CatchAll | Opaque
   deriving (Show, Eq)
 
-type Alternative = (Binders, Maybe [Guard])
+-- | A case alternative consists of a collection of binders which match
+-- a collection of values, and an optional guard.
+type Alternative = (Binders, Maybe Guard)
 
--- | Exhaustive represents a list of uncovered cases
+-- | A list of uncovered cases
 newtype Uncovered = Uncovered { getUncovered :: [Binders] }
   deriving (Show, Eq) 
 
@@ -123,9 +130,9 @@ missingAlternative alt unc
   where
   mcases = missingCases unc alt
 
-  isExhaustiveGuard :: Maybe [Guard] -> Bool
-  isExhaustiveGuard (Just gs) = elem CatchAll gs 
-  isExhaustiveGuard Nothing = True
+  isExhaustiveGuard :: Maybe Guard -> Bool
+  isExhaustiveGuard (Just Opaque) = True
+  isExhaustiveGuard _ = True
 
 -- |
 -- Given a list of alternatives, `check` generates the proper set of uncovered cases
