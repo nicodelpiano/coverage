@@ -102,7 +102,7 @@ missingAlternative alt unc
   mcases = missingCases unc alt
 
   isExhaustiveGuard :: Maybe Guard -> Bool
-  isExhaustiveGuard (Just Opaque) = True
+  isExhaustiveGuard (Just Opaque) = False
   isExhaustiveGuard _ = True
 
 -- |
