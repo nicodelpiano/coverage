@@ -9,7 +9,9 @@ module ECL.ECL
   , Guard(..)
   ) where
 
-import Data.List (foldl', nub)
+import Data.List (foldl', nub, sortBy)
+import Data.Function (on)
+import Data.Maybe (fromMaybe)
 
 -- | Type synonyms: names and lists of binders
 type Name = String
@@ -48,20 +50,55 @@ newtype Uncovered lit = Uncovered { getUncovered :: [Binders lit] }
 applyUncovered :: ([Binders lit] -> [Binders lit]) -> Uncovered lit -> Uncovered lit
 applyUncovered f = Uncovered . f . getUncovered
 
+-- |
+-- Applies a function over two lists of tuples that may lack elements
+--
+genericMerge :: Ord a =>
+  (a -> Maybe b -> Maybe c -> d) ->
+  [(a, b)] ->
+  [(a, c)] ->
+  [d]
+genericMerge _ [] [] = []
+genericMerge f bs [] = map (\(s, b) -> f s (Just b) Nothing) bs
+genericMerge f [] bs = map (\(s, b) -> f s Nothing (Just b)) bs
+genericMerge f bsl@((s, b):bs) bsr@((s', b'):bs')
+  | s < s' = (f s (Just b) Nothing) : genericMerge f bs bsr
+  | s > s' = (f s' Nothing (Just b')) : genericMerge f bsl bs'
+  | otherwise = (f s (Just b) (Just b')) : genericMerge f bs bs'
+
 -- | Returns the uncovered set after one binder is applied to the set of
 -- values represented by another.
-missingSingle :: Binder lit -> Binder lit -> Binders lit
+missingSingle :: (Eq lit) => Binder lit -> Binder lit -> Binders lit
 missingSingle _ (Var _) = []
 missingSingle b@(Var _) (Tagged tag bc) =
   map (Tagged tag) $ missingSingle b bc
-missingSingle c@(Tagged tag _) (Tagged tag' _)
-  | tag == tag' = []
+missingSingle c@(Tagged tag b) (Tagged tag' b')
+  | tag == tag' = map (Tagged tag) $ missingSingle b b'
   | otherwise = [c]
 missingSingle (Var _) (Record bs) =
   map (Record . zip names) miss
   where
   miss = getUncovered $ missingMultiple (initialize $ length bs) binders
+
   (names, binders) = unzip bs
+missingSingle (Record bs) (Record bs') =
+  map (Record . zip sortedNames) $ getUncovered allMisses
+  where
+  allMisses = uncurry missingMultiple (unzip binders)
+
+  sortNames = sortBy (compare `on` fst)
+  
+  (sbs, sbs') = (sortNames bs, sortNames bs')
+
+  compB :: a -> Maybe a -> Maybe a -> (a, a)
+  compB e b b' = (fm b, fm b')
+    where
+    fm = fromMaybe e
+
+  compBS :: Eq a => b -> a -> Maybe b -> Maybe b -> (a, (b, b))
+  compBS e s b b' = (s, compB e b b')
+
+  (sortedNames, binders) = unzip $ genericMerge (compBS (Var Nothing)) sbs sbs' 
 missingSingle b _ = [b] 
 
 -- |
@@ -75,7 +112,7 @@ initialize = flip replicate $ wildcard
 -- |
 -- `missingMultiple` returns the whole set of uncovered cases
 --
-missingMultiple :: Binders lit -> Binders lit -> Uncovered lit
+missingMultiple :: (Eq lit) => Binders lit -> Binders lit -> Uncovered lit
 missingMultiple bs = Uncovered . go bs
   where
   go [] _ = []
@@ -88,13 +125,13 @@ missingMultiple bs = Uncovered . go bs
 -- |
 -- `missingCases` applies `missingMultiple` to an alternative
 --
-missingCases :: Binders lit -> Alternative lit -> Uncovered lit
+missingCases :: (Eq lit) => Binders lit -> Alternative lit -> Uncovered lit
 missingCases unc = missingMultiple unc . fst
 
 -- |
 -- `missingAlternative` is `missingCases` with guard handling
 --
-missingAlternative :: Alternative lit -> Binders lit -> [Binders lit]
+missingAlternative :: (Eq lit) => Alternative lit -> Binders lit -> [Binders lit]
 missingAlternative alt unc
   | isExhaustiveGuard $ snd alt = getUncovered mcases
   | otherwise = [unc]
@@ -113,5 +150,5 @@ check cas = getUncovered . applyUncovered nub . foldl' step (Uncovered [initial]
   where
   initial = initialize $ length . fst . head $ cas
 
-  step :: Uncovered lit -> Alternative lit -> Uncovered lit
+  step :: (Eq lit) => Uncovered lit -> Alternative lit -> Uncovered lit
   step unc ca = applyUncovered (concatMap (missingAlternative ca)) unc
