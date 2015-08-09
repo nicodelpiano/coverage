@@ -43,12 +43,23 @@ data Guard = CatchAll | Opaque
 -- a collection of values, and an optional guard.
 type Alternative lit = (Binders lit, Maybe Guard)
 
--- | A list of uncovered cases
-newtype Uncovered lit = Uncovered { getUncovered :: [Binders lit] }
-  deriving (Show, Eq) 
+-- | Check wraps both uncovered and redundant cases
+data Check lit = Check
+  { getUncovered :: [Binders lit]
+  , getRedundant :: (Maybe Bool, [Binders lit])
+  } deriving (Show, Eq) 
 
-applyUncovered :: ([Binders lit] -> [Binders lit]) -> Uncovered lit -> Uncovered lit
-applyUncovered f = Uncovered . f . getUncovered
+applyUncovered :: ([Binders lit] -> [Binders lit]) -> Check lit -> Check lit
+applyUncovered f = Check . f . getUncovered
+
+applyRedundant :: ([Binders lit] -> (Maybe Bool, [Binders lit])) -> Check lit -> Check lit
+applyRedundant f = Check . f . getRedundant
+
+applyCheck ::
+  ([Binders lit] -> [Binders lit]) ->
+  ([Binders lit] -> (Maybe Bool, [Binders lit])) ->
+  Check lit -> Check lit
+applyCheck f g = applyUncovered f . applyRedundant g
 
 -- |
 -- Applies a function over two lists of tuples that may lack elements
@@ -146,11 +157,11 @@ missingAlternative alt unc
 -- Given a list of alternatives, `check'` generates the proper set of uncovered cases
 --
 check' :: (Eq lit) => [Alternative lit] -> [Binders lit]
-check' cas = getUncovered . applyUncovered nub . foldl' step (Uncovered [initial]) $ cas
+check' cas = getUncovered . applyUncovered nub . foldl' step (Check { [initial], [] }) $ cas
   where
   initial = initialize $ length . fst . head $ cas
 
-  step :: (Eq lit) => Uncovered lit -> Alternative lit -> Uncovered lit
+  step :: (Eq lit) => Uncovered lit -> Alternative lit -> Check lit
   step unc ca = applyUncovered (concatMap (missingAlternative ca)) unc
 
 -- |
