@@ -157,7 +157,7 @@ check' cas = getUncovered . applyUncovered nub . foldl' step (Uncovered [initial
 -- Given two translation functions (between the desired type and `Binder`) and a list of alternatives,
 -- `check` generates the proper set of uncovered cases
 --
-check :: Eq lit => (lit -> Binder lit) -> (Binder lit -> lit) -> [([lit], Maybe Guard)] -> [[lit]]
+check :: (Eq a, Eq lit) => (a -> Binder lit) -> (Binder lit -> a) -> [([a], Maybe Guard)] -> [[a]]
 check toB fromB cas = map fromBs $ check' alt
   where
   alt = map toAlternative cas

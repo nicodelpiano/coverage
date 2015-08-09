@@ -24,4 +24,4 @@ binderToNat (Tagged "Succ" b) = Succ $ binderToNat b
 binderToNat _ = error "This should not be happening."
 
 checkNat :: [([NatBinder], Maybe Guard)] -> [[NatBinder]]
-checkNat = check natToBinder binderToNat
+checkNat = (check :: ((NatBinder -> Binder NatBinder) -> (Binder NatBinder -> NatBinder) -> [([NatBinder], Maybe Guard)] -> [[NatBinder]])) natToBinder binderToNat
