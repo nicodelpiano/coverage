@@ -143,12 +143,25 @@ missingAlternative alt unc
   isExhaustiveGuard _ = True
 
 -- |
--- Given a list of alternatives, `check` generates the proper set of uncovered cases
+-- Given a list of alternatives, `check'` generates the proper set of uncovered cases
 --
-check :: (Eq lit) => [Alternative lit] -> [Binders lit]
-check cas = getUncovered . applyUncovered nub . foldl' step (Uncovered [initial]) $ cas
+check' :: (Eq lit) => [Alternative lit] -> [Binders lit]
+check' cas = getUncovered . applyUncovered nub . foldl' step (Uncovered [initial]) $ cas
   where
   initial = initialize $ length . fst . head $ cas
 
   step :: (Eq lit) => Uncovered lit -> Alternative lit -> Uncovered lit
   step unc ca = applyUncovered (concatMap (missingAlternative ca)) unc
+
+-- |
+-- Given two translation functions (between the desired type and `Binder`) and a list of alternatives,
+-- `check` generates the proper set of uncovered cases
+--
+check :: Eq lit => (lit -> Binder lit) -> (Binder lit -> lit) -> [([lit], Maybe Guard)] -> [[lit]]
+check toB fromB cas = map fromBs $ check' alt
+  where
+  alt = map toAlternative cas
+
+  toAlternative (bs, g) = (map toB bs, g)
+
+  fromBs = map fromB
