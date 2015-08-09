@@ -7,13 +7,18 @@ module ECL.ECL
   ( check
   , Binder(..)
   , Guard(..)
+  , makeEnv
+  , Check(..)
   ) where
 
 import Data.List (foldl', nub, sortBy)
 import Data.Function (on)
 import Data.Maybe (fromMaybe)
 
--- | Type synonyms: names and lists of binders
+import Control.Applicative (pure, (<$>), liftA2)
+import Control.Arrow (first)
+
+-- | A type synonym for names. 
 type Name = String
 
 -- | A collection of binders, as used to match products, in product binders
@@ -31,6 +36,21 @@ data Binder lit
   | Record [(Name, Binder lit)]
   deriving (Show, Eq)
 
+-- | Represents constructors' arities.
+type Arity = Int
+
+-- | Environment
+--
+-- The language implementor should provide an environment to let
+-- the checker lookup for constructors' names (just for one type for now).
+newtype Environment = Environment { envInfo :: Name -> Maybe [(Name, Arity)] }
+
+makeEnv :: (Name -> Maybe [(Name, Arity)]) -> Environment
+makeEnv info = Environment { envInfo = info }
+
+defaultEnv :: Environment
+defaultEnv = makeEnv (\_ -> Nothing)
+
 -- | Guards and alternatives
 -- 
 -- Guard are abstract, and it is up to the language implementor to interpret
@@ -43,15 +63,29 @@ data Guard = CatchAll | Opaque
 -- a collection of values, and an optional guard.
 type Alternative lit = (Binders lit, Maybe Guard)
 
--- | A list of uncovered cases
-newtype Uncovered lit = Uncovered { getUncovered :: [Binders lit] }
-  deriving (Show, Eq) 
+-- | Check wraps both uncovered and redundant cases.
+data Check lit = Check
+  { getUncovered :: [Binders lit]
+  , getRedundant :: (Maybe Bool, [Binders lit])
+  } deriving (Show, Eq) 
 
-applyUncovered :: ([Binders lit] -> [Binders lit]) -> Uncovered lit -> Uncovered lit
-applyUncovered f = Uncovered . f . getUncovered
+makeCheck :: [Binders lit] -> (Maybe Bool, [Binders lit]) -> Check lit
+makeCheck bs red = Check
+  { getUncovered = bs
+  , getRedundant = red }
+
+applyUncovered :: ([Binders lit] -> [Binders lit]) -> Check lit -> Check lit
+applyUncovered f c = makeCheck (f $ getUncovered c) (getRedundant c)
+
+applyRedundant :: ((Maybe Bool, [Binders lit]) -> (Maybe Bool, [Binders lit])) -> Check lit -> Check lit
+applyRedundant f c = makeCheck (getUncovered c) (f $ getRedundant c)
+
+-- | Wildcard
+wildcard :: Binder lit
+wildcard = Var Nothing
 
 -- |
--- Applies a function over two lists of tuples that may lack elements
+-- Applies a function over two lists of tuples that may lack elements.
 --
 genericMerge :: Ord a =>
   (a -> Maybe b -> Maybe c -> d) ->
@@ -68,23 +102,36 @@ genericMerge f bsl@((s, b):bs) bsr@((s', b'):bs')
 
 -- | Returns the uncovered set after one binder is applied to the set of
 -- values represented by another.
-missingSingle :: (Eq lit) => Binder lit -> Binder lit -> Binders lit
-missingSingle _ (Var _) = []
-missingSingle b@(Var _) (Tagged tag bc) =
-  map (Tagged tag) $ missingSingle b bc
-missingSingle c@(Tagged tag b) (Tagged tag' b')
-  | tag == tag' = map (Tagged tag) $ missingSingle b b'
-  | otherwise = [c]
-missingSingle (Var _) (Record bs) =
-  map (Record . zip names) miss
+missingSingle :: (Eq lit) => Environment -> Binder lit -> Binder lit -> ([Binder lit], Maybe Bool)
+missingSingle _ _ (Var _) = ([], pure True)
+missingSingle env (Var _) (Product ps) =
+  first (map Product) $ missingMultiple env (initialize $ length ps) ps
+missingSingle env p@(Product ps) (Product ps')
+  | length ps == length ps' = first (map Product) $ missingMultiple env ps ps'
+  | otherwise = ([p], pure False)
+missingSingle env (Var _) cb@(Tagged con _) =
+  (concatMap (\cp -> fst $ missingSingle env cp cb) $ tagEnv, pure True)
   where
-  miss = getUncovered $ missingMultiple (initialize $ length bs) binders
+  tag :: (Eq lit) => (Name, Arity) -> Binder lit
+  tag (n, _) = Tagged n wildcard
+
+  tagEnv :: (Eq lit) => [Binder lit]
+  tagEnv = map tag
+           . fromMaybe (error $ "Constructor name '" ++ con ++ "' not in the scope of the current environment in missingSingle.")
+           . envInfo env $ con
+missingSingle env c@(Tagged tag bs) (Tagged tag' bs')
+  | tag == tag' = let (bs'', pr) = missingSingle env bs bs' in (map (Tagged tag) bs'', pr)
+  | otherwise = ([c], pure False)
+missingSingle env (Var _) (Record bs) =
+  (map (Record . zip names) $ miss, pr)
+  where
+  (miss, pr) = missingMultiple env (initialize $ length bs) binders
 
   (names, binders) = unzip bs
-missingSingle (Record bs) (Record bs') =
-  map (Record . zip sortedNames) $ getUncovered allMisses
+missingSingle env (Record bs) (Record bs') =
+  (map (Record . zip sortedNames) $ allMisses, pr)
   where
-  allMisses = uncurry missingMultiple (unzip binders)
+  (allMisses, pr) = uncurry (missingMultiple env) $ unzip binders
 
   sortNames = sortBy (compare `on` fst)
   
@@ -99,56 +146,59 @@ missingSingle (Record bs) (Record bs') =
   compBS e s b b' = (s, compB e b b')
 
   (sortedNames, binders) = unzip $ genericMerge (compBS (Var Nothing)) sbs sbs' 
-missingSingle b _ = [b] 
+missingSingle _ b _ = ([b], Nothing) 
 
 -- |
--- Generates a list of initial binders
+-- Generates a list of initial binders.
 --
-initialize :: Int -> Binders lit
+initialize :: Int -> [Binder lit]
 initialize = flip replicate $ wildcard
-  where
-  wildcard = Var Nothing
 
 -- |
--- `missingMultiple` returns the whole set of uncovered cases
+-- `missingMultiple` returns the whole set of uncovered cases.
 --
-missingMultiple :: (Eq lit) => Binders lit -> Binders lit -> Uncovered lit
-missingMultiple bs = Uncovered . go bs
+missingMultiple :: (Eq lit) => Environment -> Binders lit -> Binders lit -> ([Binders lit], Maybe Bool)
+missingMultiple env = go
   where
-  go [] _ = []
-  go (x:xs) (y:ys) = map (: xs) missed ++ fmap (x :) missed'
+  go [] _ = ([], pure True)
+  go (x:xs) (y:ys) = (map (: xs) missed ++ fmap (x :) missed', liftA2 (&&) pr1 pr2)
     where
-    missed = missingSingle x y
-    missed' = go xs ys
+    (missed, pr1) = missingSingle env x y
+    (missed', pr2) = go xs ys
   go _ _ = error "Error in missingMultiple: invalid length of argument binders."
 
 -- |
--- `missingCases` applies `missingMultiple` to an alternative
+-- `missingCases` applies `missingMultiple` to an alternative.
 --
-missingCases :: (Eq lit) => Binders lit -> Alternative lit -> Uncovered lit
-missingCases unc = missingMultiple unc . fst
+missingCases :: (Eq lit) => Environment -> Binders lit -> Alternative lit -> ([Binders lit], Maybe Bool)
+missingCases env unc = missingMultiple env unc . fst
 
 -- |
--- `missingAlternative` is `missingCases` with guard handling
+-- `missingAlternative` is `missingCases` with guard handling.
 --
-missingAlternative :: (Eq lit) => Alternative lit -> Binders lit -> [Binders lit]
-missingAlternative alt unc
-  | isExhaustiveGuard $ snd alt = getUncovered mcases
-  | otherwise = [unc]
+missingAlternative :: (Eq lit) => Environment -> Alternative lit -> Binders lit -> ([Binders lit], Maybe Bool)
+missingAlternative env alt unc
+  | isExhaustiveGuard $ snd alt = mcases
+  | otherwise = ([unc], snd mcases)
   where
-  mcases = missingCases unc alt
+  mcases = missingCases env unc alt
 
   isExhaustiveGuard :: Maybe Guard -> Bool
   isExhaustiveGuard (Just Opaque) = False
   isExhaustiveGuard _ = True
 
 -- |
--- Given a list of alternatives, `check` generates the proper set of uncovered cases
+-- Given a list of alternatives, `check` generates the proper set of uncovered cases.
 --
-check :: (Eq lit) => [Alternative lit] -> [Binders lit]
-check cas = getUncovered . applyUncovered nub . foldl' step (Uncovered [initial]) $ cas
+check :: (Eq lit) => Environment -> [Alternative lit] -> Check lit
+check env cas = applyUncovered nub . foldl' step initial $ cas
   where
-  initial = initialize $ length . fst . head $ cas
+  initial = makeCheck [initialize $ length . fst . head $ cas] $ (pure True, [])
 
-  step :: (Eq lit) => Uncovered lit -> Alternative lit -> Uncovered lit
-  step unc ca = applyUncovered (concatMap (missingAlternative ca)) unc
+  step :: (Eq lit) => Check lit -> Alternative lit -> Check lit
+  step ch ca =
+    let (missed, pr) = unzip $ map (missingAlternative env ca) $ getUncovered ch
+        (mb, redundant) = getRedundant ch
+        cond = liftA2 (&&) (or <$> sequence pr) mb
+    in applyRedundant (\_ -> (cond, if fromMaybe True cond then redundant else fst ca : redundant))
+       . applyUncovered (\unc -> if fromMaybe True cond then concat missed else unc) $ ch
