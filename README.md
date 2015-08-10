@@ -8,5 +8,5 @@ Prelude> :l Nat.hs
 Ok, modules loaded: Nat.
 *Nat> checkNat [([Zero, Zero], Nothing), ([Zero, Zero], Nothing)]
 Loading package ecl-0.1.0.0 ... linking ... done.
-([[Succ NullBinder,NullBinder],[NullBinder,Succ NullBinder]],Just False)
+([[Succ NullBinder,NullBinder],[NullBinder,Succ NullBinder]],[[Zero,Zero]])
 ```

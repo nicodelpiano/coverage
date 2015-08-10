@@ -28,5 +28,5 @@ env =
   [ ("Zero", 0)
   , ("Succ", 1)]
 
-checkNat :: [([NatBinder], Maybe Guard)] -> ([[NatBinder]], Maybe Bool)
+checkNat :: [([NatBinder], Maybe Guard)] -> ([[NatBinder]], [[NatBinder]])
 checkNat = check env natToBinder binderToNat

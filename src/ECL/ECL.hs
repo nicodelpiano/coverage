@@ -14,7 +14,7 @@ import Data.List (foldl', nub, sortBy)
 import Data.Function (on)
 import Data.Maybe (fromMaybe)
 
-import Control.Arrow (first)
+import Control.Arrow (first, second)
 import Control.Applicative (pure, (<$>), liftA2)
 
 -- | A type synonym for names. 
@@ -59,26 +59,26 @@ type Alternative lit = (Binders lit, Maybe Guard)
 -- | Check wraps both uncovered and redundant cases
 data Check lit = Check
   { getUncovered :: [Binders lit]
-  , getRedundant :: Maybe Bool
+  , getRedundant :: (Maybe Bool, [Binders lit])
   } deriving (Show, Eq) 
 
-makeCheck :: [Binders lit] -> Maybe Bool -> Check lit
-makeCheck bs mb = Check
+makeCheck :: [Binders lit] -> (Maybe Bool, [Binders lit]) -> Check lit
+makeCheck bs red = Check
   { getUncovered = bs
-  , getRedundant = mb }
+  , getRedundant = red }
 
-unwrapCheck :: Check lit -> ([Binders lit], Maybe Bool)
+unwrapCheck :: Check lit -> ([Binders lit], (Maybe Bool, [Binders lit]))
 unwrapCheck ch = (getUncovered ch, getRedundant ch)
 
 applyUncovered :: ([Binders lit] -> [Binders lit]) -> Check lit -> Check lit
 applyUncovered f c = makeCheck (f $ getUncovered c) (getRedundant c)
 
-applyRedundant :: (Maybe Bool -> Maybe Bool) -> Check lit -> Check lit
+applyRedundant :: ((Maybe Bool, [Binders lit]) -> (Maybe Bool, [Binders lit])) -> Check lit -> Check lit
 applyRedundant f c = makeCheck (getUncovered c) (f $ getRedundant c)
 
 applyCheck ::
   ([Binders lit] -> [Binders lit]) ->
-  (Maybe Bool -> Maybe Bool) ->
+  ((Maybe Bool, [Binders lit]) -> (Maybe Bool, [Binders lit])) ->
   Check lit -> Check lit
 applyCheck f g = applyUncovered f . applyRedundant g
 
@@ -119,15 +119,15 @@ missingSingle env c@(Tagged tag b) (Tagged tag' b')
   | tag == tag' = let (b'', pr) = missingSingle env b b' in (map (Tagged tag) b'', pr)
   | otherwise = ([c], pure False)
 missingSingle env (Var _) (Record bs) =
-  (map (Record . zip names) $ getUncovered miss, getRedundant miss)
+  (map (Record . zip names) $ miss, pr)
   where
-  miss = missingMultiple env (initialize $ length bs) binders
+  (miss, pr) = missingMultiple env (initialize $ length bs) binders
 
   (names, binders) = unzip bs
 missingSingle env (Record bs) (Record bs') =
-  (map (Record . zip sortedNames) $ getUncovered allMisses, getRedundant allMisses)
+  (map (Record . zip sortedNames) $ allMisses, pr)
   where
-  allMisses = uncurry (missingMultiple env) $ unzip binders
+  (allMisses, pr) = uncurry (missingMultiple env) $ unzip binders
 
   sortNames = sortBy (compare `on` fst)
   
@@ -153,8 +153,8 @@ initialize = flip replicate $ wildcard
 -- |
 -- `missingMultiple` returns the whole set of uncovered cases.
 --
-missingMultiple :: (Eq lit) => Environment -> Binders lit -> Binders lit -> Check lit
-missingMultiple env bs bs' = let (unc, red) = go bs bs' in Check { getUncovered = unc, getRedundant = red }
+missingMultiple :: (Eq lit) => Environment -> Binders lit -> Binders lit -> ([Binders lit], Maybe Bool)
+missingMultiple env = go
   where
   go [] _ = ([], pure True)
   go (x:xs) (y:ys) = (map (: xs) missed ++ fmap (x :) missed', liftA2 (&&) pr1 pr2)
@@ -166,18 +166,16 @@ missingMultiple env bs bs' = let (unc, red) = go bs bs' in Check { getUncovered 
 -- |
 -- `missingCases` applies `missingMultiple` to an alternative.
 --
-missingCases :: (Eq lit) => Environment -> Binders lit -> Alternative lit -> Check lit
+missingCases :: (Eq lit) => Environment -> Binders lit -> Alternative lit -> ([Binders lit], Maybe Bool)
 missingCases env unc = missingMultiple env unc . fst
 
 -- |
 -- `missingAlternative` is `missingCases` with guard handling.
 --
-missingAlternative :: (Eq lit) => Environment -> Alternative lit -> Binders lit -> Check lit
+missingAlternative :: (Eq lit) => Environment -> Alternative lit -> Binders lit -> ([Binders lit], Maybe Bool)
 missingAlternative env alt unc
   | isExhaustiveGuard $ snd alt = mcases
-  | otherwise = Check
-    { getUncovered = [unc]
-    , getRedundant = getRedundant mcases }
+  | otherwise = ([unc], snd mcases)
   where
   mcases = missingCases env unc alt
 
@@ -191,21 +189,19 @@ missingAlternative env alt unc
 check' :: (Eq lit) => Environment -> [Alternative lit] -> Check lit
 check' env cas = applyUncovered nub . foldl' step initial $ cas
   where
-  initial = makeCheck [initialize $ length . fst . head $ cas] $ pure True
+  initial = makeCheck [initialize $ length . fst . head $ cas] $ (pure True, [])
 
   step :: (Eq lit) => Check lit -> Alternative lit -> Check lit
   step ch ca =
-    let (missed, pr) = unzip $ map (unwrapCheck . missingAlternative env ca) $ getUncovered ch
-        cond = liftA2 (&&) (or <$> sequenceA pr) $ getRedundant ch
+    let (missed, pr) = unzip $ map (missingAlternative env ca) $ getUncovered ch
+        (mb, redundant) = getRedundant ch
+        cond = liftA2 (&&) (or <$> sequenceA pr) mb
     in Check
-      { getUncovered = if notOverlaps cond then concat missed else getUncovered ch
-      , getRedundant = cond }
+      { getUncovered = if fromMaybe True cond then concat missed else getUncovered ch
+      , getRedundant = (cond, if fromMaybe True cond then redundant else fst ca : redundant) }
     where
     sequenceA = foldr (liftA2 (:)) (pure [])
 
-    notOverlaps :: Maybe Bool -> Bool
-    notOverlaps (Just False) = False
-    notOverlaps _ = True
 -- |
 -- Given two translation functions (between the desired type and `Binder`) an environment 
 -- and a list of alternatives, `check` generates the proper set of uncovered cases.
@@ -214,8 +210,8 @@ check :: (Eq a, Eq lit) =>
   Environment ->
   (a -> Binder lit) ->
   (Binder lit -> a) ->
-  [([a], Maybe Guard)] -> ([[a]], Maybe Bool)
-check env toB fromB cas = (first $ map fromBs) . unwrapCheck $ check' env alt
+  [([a], Maybe Guard)] -> ([[a]], [[a]])
+check env toB fromB cas = (second $ map fromBs . snd) $ (first $ map fromBs) . unwrapCheck $ check' env alt
   where
   alt = map toAlternative cas
 
