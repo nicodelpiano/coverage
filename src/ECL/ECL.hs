@@ -196,13 +196,16 @@ check' env cas = applyUncovered nub . foldl' step initial $ cas
   step :: (Eq lit) => Check lit -> Alternative lit -> Check lit
   step ch ca =
     let (missed, pr) = unzip $ map (unwrapCheck . missingAlternative env ca) $ getUncovered ch
-        cond = or <$> sequenceA pr
+        cond = liftA2 (&&) (or <$> sequenceA pr) $ getRedundant ch
     in Check
-      { getUncovered = concat missed
-      , getRedundant = liftA2 (&&) cond $ getRedundant ch }
+      { getUncovered = if notOverlaps cond then concat missed else getUncovered ch
+      , getRedundant = cond }
     where
     sequenceA = foldr (liftA2 (:)) (pure [])
 
+    notOverlaps :: Maybe Bool -> Bool
+    notOverlaps (Just False) = False
+    notOverlaps _ = True
 -- |
 -- Given two translation functions (between the desired type and `Binder`) an environment 
 -- and a list of alternatives, `check` generates the proper set of uncovered cases.
