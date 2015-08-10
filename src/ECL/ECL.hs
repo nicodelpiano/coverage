@@ -13,6 +13,8 @@ import Data.List (foldl', nub, sortBy)
 import Data.Function (on)
 import Data.Maybe (fromMaybe)
 
+import Control.Applicative (pure, (<$>), liftA2)
+
 -- | Type synonyms: names and lists of binders
 type Name = String
 
@@ -46,18 +48,26 @@ type Alternative lit = (Binders lit, Maybe Guard)
 -- | Check wraps both uncovered and redundant cases
 data Check lit = Check
   { getUncovered :: [Binders lit]
-  , getRedundant :: (Maybe Bool, [Binders lit])
+  , getRedundant :: Maybe Bool
   } deriving (Show, Eq) 
 
-applyUncovered :: ([Binders lit] -> [Binders lit]) -> Check lit -> Check lit
-applyUncovered f = Check . f . getUncovered
+makeCheck :: [Binders lit] -> Maybe Bool -> Check lit
+makeCheck bs mb = Check
+  { getUncovered = bs
+  , getRedundant = mb }
 
-applyRedundant :: ([Binders lit] -> (Maybe Bool, [Binders lit])) -> Check lit -> Check lit
-applyRedundant f = Check . f . getRedundant
+unwrapCheck :: Check lit -> ([Binders lit], Maybe Bool)
+unwrapCheck ch = (getUncovered ch, getRedundant ch)
+
+applyUncovered :: ([Binders lit] -> [Binders lit]) -> Check lit -> Check lit
+applyUncovered f c = makeCheck (f $ getUncovered c) (getRedundant c)
+
+applyRedundant :: (Maybe Bool -> Maybe Bool) -> Check lit -> Check lit
+applyRedundant f c = makeCheck (getUncovered c) (f $ getRedundant c)
 
 applyCheck ::
   ([Binders lit] -> [Binders lit]) ->
-  ([Binders lit] -> (Maybe Bool, [Binders lit])) ->
+  (Maybe Bool -> Maybe Bool) ->
   Check lit -> Check lit
 applyCheck f g = applyUncovered f . applyRedundant g
 
@@ -79,21 +89,23 @@ genericMerge f bsl@((s, b):bs) bsr@((s', b'):bs')
 
 -- | Returns the uncovered set after one binder is applied to the set of
 -- values represented by another.
-missingSingle :: (Eq lit) => Binder lit -> Binder lit -> Binders lit
-missingSingle _ (Var _) = []
+missingSingle :: (Eq lit) => Binder lit -> Binder lit -> (Binders lit, Maybe Bool)
+missingSingle _ (Var _) = ([], pure True)
 missingSingle b@(Var _) (Tagged tag bc) =
-  map (Tagged tag) $ missingSingle b bc
-missingSingle c@(Tagged tag b) (Tagged tag' b')
-  | tag == tag' = map (Tagged tag) $ missingSingle b b'
-  | otherwise = [c]
-missingSingle (Var _) (Record bs) =
-  map (Record . zip names) miss
+  (map (Tagged tag) $ missed, pure True)
   where
-  miss = getUncovered $ missingMultiple (initialize $ length bs) binders
+  (missed, _) = missingSingle b bc
+missingSingle c@(Tagged tag b) (Tagged tag' b')
+  | tag == tag' = let (b'', pr) = missingSingle b b' in (map (Tagged tag) b'', pr)
+  | otherwise = ([c], pure False)
+missingSingle (Var _) (Record bs) =
+  (map (Record . zip names) (getUncovered miss), getRedundant miss)
+  where
+  miss = missingMultiple (initialize $ length bs) binders
 
   (names, binders) = unzip bs
 missingSingle (Record bs) (Record bs') =
-  map (Record . zip sortedNames) $ getUncovered allMisses
+  (map (Record . zip sortedNames) $ getUncovered allMisses, getRedundant allMisses)
   where
   allMisses = uncurry missingMultiple (unzip binders)
 
@@ -110,7 +122,7 @@ missingSingle (Record bs) (Record bs') =
   compBS e s b b' = (s, compB e b b')
 
   (sortedNames, binders) = unzip $ genericMerge (compBS (Var Nothing)) sbs sbs' 
-missingSingle b _ = [b] 
+missingSingle b _ = ([b], Nothing) 
 
 -- |
 -- Generates a list of initial binders
@@ -123,29 +135,31 @@ initialize = flip replicate $ wildcard
 -- |
 -- `missingMultiple` returns the whole set of uncovered cases
 --
-missingMultiple :: (Eq lit) => Binders lit -> Binders lit -> Uncovered lit
-missingMultiple bs = Uncovered . go bs
+missingMultiple :: (Eq lit) => Binders lit -> Binders lit -> Check lit
+missingMultiple bs bs' = let (unc, red) = go bs bs' in Check { getUncovered = unc, getRedundant = red }
   where
-  go [] _ = []
-  go (x:xs) (y:ys) = map (: xs) missed ++ fmap (x :) missed'
+  go [] _ = ([], pure True)
+  go (x:xs) (y:ys) = (map (: xs) missed ++ fmap (x :) missed', liftA2 (&&) pr1 pr2)
     where
-    missed = missingSingle x y
-    missed' = go xs ys
+    (missed, pr1) = missingSingle x y
+    (missed', pr2) = go xs ys
   go _ _ = error "Error in missingMultiple: invalid length of argument binders."
 
 -- |
 -- `missingCases` applies `missingMultiple` to an alternative
 --
-missingCases :: (Eq lit) => Binders lit -> Alternative lit -> Uncovered lit
+missingCases :: (Eq lit) => Binders lit -> Alternative lit -> Check lit
 missingCases unc = missingMultiple unc . fst
 
 -- |
 -- `missingAlternative` is `missingCases` with guard handling
 --
-missingAlternative :: (Eq lit) => Alternative lit -> Binders lit -> [Binders lit]
+missingAlternative :: (Eq lit) => Alternative lit -> Binders lit -> Check lit
 missingAlternative alt unc
-  | isExhaustiveGuard $ snd alt = getUncovered mcases
-  | otherwise = [unc]
+  | isExhaustiveGuard $ snd alt = mcases
+  | otherwise = Check
+    { getUncovered = [unc]
+    , getRedundant = getRedundant mcases }
   where
   mcases = missingCases unc alt
 
@@ -157,12 +171,19 @@ missingAlternative alt unc
 -- Given a list of alternatives, `check'` generates the proper set of uncovered cases
 --
 check' :: (Eq lit) => [Alternative lit] -> [Binders lit]
-check' cas = getUncovered . applyUncovered nub . foldl' step (Check { [initial], [] }) $ cas
+check' cas = getUncovered . applyUncovered nub . foldl' step initial $ cas
   where
-  initial = initialize $ length . fst . head $ cas
+  initial = makeCheck [initialize $ length . fst . head $ cas] $ pure True
 
-  step :: (Eq lit) => Uncovered lit -> Alternative lit -> Check lit
-  step unc ca = applyUncovered (concatMap (missingAlternative ca)) unc
+  step :: (Eq lit) => Check lit -> Alternative lit -> Check lit
+  step ch ca =
+    let (missed, pr) = unzip $ map (unwrapCheck . missingAlternative ca) $ getUncovered ch
+        cond = or <$> sequenceA pr
+    in Check
+      { getUncovered = concat missed
+      , getRedundant = liftA2 (&&) cond $ getRedundant ch }
+    where
+    sequenceA = foldr (liftA2 (:)) (pure [])
 
 -- |
 -- Given two translation functions (between the desired type and `Binder`) and a list of alternatives,
