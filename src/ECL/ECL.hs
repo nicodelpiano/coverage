@@ -7,15 +7,17 @@ module ECL.ECL
   ( check
   , Binder(..)
   , Guard(..)
+  , Environment
   ) where
 
 import Data.List (foldl', nub, sortBy)
 import Data.Function (on)
 import Data.Maybe (fromMaybe)
 
+import Control.Arrow (first)
 import Control.Applicative (pure, (<$>), liftA2)
 
--- | Type synonyms: names and lists of binders
+-- | A type synonym for names. 
 type Name = String
 
 -- | A collection of binders, as used to match products, in product binders
@@ -32,6 +34,15 @@ data Binder lit
   | Product (Binders lit)
   | Record [(Name, Binder lit)]
   deriving (Show, Eq)
+
+-- | Represents constructors' arities.
+type Arity = Int
+
+-- | Environment
+--
+-- The language implementor should provide an environment to let
+-- the checker lookup for constructors' names (just for one type for now).
+type Environment = [(Name, Arity)]
 
 -- | Guards and alternatives
 -- 
@@ -71,8 +82,12 @@ applyCheck ::
   Check lit -> Check lit
 applyCheck f g = applyUncovered f . applyRedundant g
 
+-- | Wildcard
+wildcard :: Binder lit
+wildcard = Var Nothing
+
 -- |
--- Applies a function over two lists of tuples that may lack elements
+-- Applies a function over two lists of tuples that may lack elements.
 --
 genericMerge :: Ord a =>
   (a -> Maybe b -> Maybe c -> d) ->
@@ -89,25 +104,30 @@ genericMerge f bsl@((s, b):bs) bsr@((s', b'):bs')
 
 -- | Returns the uncovered set after one binder is applied to the set of
 -- values represented by another.
-missingSingle :: (Eq lit) => Binder lit -> Binder lit -> (Binders lit, Maybe Bool)
-missingSingle _ (Var _) = ([], pure True)
-missingSingle b@(Var _) (Tagged tag bc) =
-  (map (Tagged tag) $ missed, pure True)
+missingSingle :: (Eq lit) => Environment -> Binder lit -> Binder lit -> (Binders lit, Maybe Bool)
+missingSingle _ _ (Var _) = ([], pure True)
+missingSingle env (Var _) cb@(Tagged _ _) =
+  (concatMap (\cp -> fst $ missingSingle env cp cb) $ tagEnv env, pure True)
   where
-  (missed, _) = missingSingle b bc
-missingSingle c@(Tagged tag b) (Tagged tag' b')
-  | tag == tag' = let (b'', pr) = missingSingle b b' in (map (Tagged tag) b'', pr)
+  -- arity 1
+  tag :: (Eq lit) => (Name, Arity) -> Binder lit
+  tag (n, _) = Tagged n wildcard
+
+  tagEnv :: (Eq lit) => Environment -> Binders lit
+  tagEnv = foldr (\x xs -> tag x : xs) []
+missingSingle env c@(Tagged tag b) (Tagged tag' b')
+  | tag == tag' = let (b'', pr) = missingSingle env b b' in (map (Tagged tag) b'', pr)
   | otherwise = ([c], pure False)
-missingSingle (Var _) (Record bs) =
-  (map (Record . zip names) (getUncovered miss), getRedundant miss)
+missingSingle env (Var _) (Record bs) =
+  (map (Record . zip names) $ getUncovered miss, getRedundant miss)
   where
-  miss = missingMultiple (initialize $ length bs) binders
+  miss = missingMultiple env (initialize $ length bs) binders
 
   (names, binders) = unzip bs
-missingSingle (Record bs) (Record bs') =
+missingSingle env (Record bs) (Record bs') =
   (map (Record . zip sortedNames) $ getUncovered allMisses, getRedundant allMisses)
   where
-  allMisses = uncurry missingMultiple (unzip binders)
+  allMisses = uncurry (missingMultiple env) $ unzip binders
 
   sortNames = sortBy (compare `on` fst)
   
@@ -122,62 +142,60 @@ missingSingle (Record bs) (Record bs') =
   compBS e s b b' = (s, compB e b b')
 
   (sortedNames, binders) = unzip $ genericMerge (compBS (Var Nothing)) sbs sbs' 
-missingSingle b _ = ([b], Nothing) 
+missingSingle _ b _ = ([b], Nothing) 
 
 -- |
--- Generates a list of initial binders
+-- Generates a list of initial binders.
 --
 initialize :: Int -> Binders lit
 initialize = flip replicate $ wildcard
-  where
-  wildcard = Var Nothing
 
 -- |
--- `missingMultiple` returns the whole set of uncovered cases
+-- `missingMultiple` returns the whole set of uncovered cases.
 --
-missingMultiple :: (Eq lit) => Binders lit -> Binders lit -> Check lit
-missingMultiple bs bs' = let (unc, red) = go bs bs' in Check { getUncovered = unc, getRedundant = red }
+missingMultiple :: (Eq lit) => Environment -> Binders lit -> Binders lit -> Check lit
+missingMultiple env bs bs' = let (unc, red) = go bs bs' in Check { getUncovered = unc, getRedundant = red }
   where
   go [] _ = ([], pure True)
   go (x:xs) (y:ys) = (map (: xs) missed ++ fmap (x :) missed', liftA2 (&&) pr1 pr2)
     where
-    (missed, pr1) = missingSingle x y
+    (missed, pr1) = missingSingle env x y
     (missed', pr2) = go xs ys
   go _ _ = error "Error in missingMultiple: invalid length of argument binders."
 
 -- |
--- `missingCases` applies `missingMultiple` to an alternative
+-- `missingCases` applies `missingMultiple` to an alternative.
 --
-missingCases :: (Eq lit) => Binders lit -> Alternative lit -> Check lit
-missingCases unc = missingMultiple unc . fst
+missingCases :: (Eq lit) => Environment -> Binders lit -> Alternative lit -> Check lit
+missingCases env unc = missingMultiple env unc . fst
 
 -- |
--- `missingAlternative` is `missingCases` with guard handling
+-- `missingAlternative` is `missingCases` with guard handling.
 --
-missingAlternative :: (Eq lit) => Alternative lit -> Binders lit -> Check lit
-missingAlternative alt unc
+missingAlternative :: (Eq lit) => Environment -> Alternative lit -> Binders lit -> Check lit
+missingAlternative env alt unc
   | isExhaustiveGuard $ snd alt = mcases
   | otherwise = Check
     { getUncovered = [unc]
     , getRedundant = getRedundant mcases }
   where
-  mcases = missingCases unc alt
+  mcases = missingCases env unc alt
 
   isExhaustiveGuard :: Maybe Guard -> Bool
   isExhaustiveGuard (Just Opaque) = False
   isExhaustiveGuard _ = True
 
 -- |
--- Given a list of alternatives, `check'` generates the proper set of uncovered cases
+-- Given a list of alternatives, `check'` generates the proper set of uncovered cases.
 --
-check' :: (Eq lit) => [Alternative lit] -> [Binders lit]
-check' cas = getUncovered . applyUncovered nub . foldl' step initial $ cas
+check' :: (Eq lit) => Environment -> [Alternative lit] -> Check lit
+check' env cas = applyUncovered nub . foldl' step initial $ cas
   where
   initial = makeCheck [initialize $ length . fst . head $ cas] $ pure True
 
   step :: (Eq lit) => Check lit -> Alternative lit -> Check lit
   step ch ca =
-    let (missed, pr) = unzip $ map (unwrapCheck . missingAlternative ca) $ getUncovered ch
+    let (missed, pr) = unzip $ map (unwrapCheck . missingAlternative env ca) $ getUncovered ch
         cond = or <$> sequenceA pr
     in Check
       { getUncovered = concat missed
@@ -186,11 +204,15 @@ check' cas = getUncovered . applyUncovered nub . foldl' step initial $ cas
     sequenceA = foldr (liftA2 (:)) (pure [])
 
 -- |
--- Given two translation functions (between the desired type and `Binder`) and a list of alternatives,
--- `check` generates the proper set of uncovered cases
+-- Given two translation functions (between the desired type and `Binder`) an environment 
+-- and a list of alternatives, `check` generates the proper set of uncovered cases.
 --
-check :: (Eq a, Eq lit) => (a -> Binder lit) -> (Binder lit -> a) -> [([a], Maybe Guard)] -> [[a]]
-check toB fromB cas = map fromBs $ check' alt
+check :: (Eq a, Eq lit) =>
+  Environment ->
+  (a -> Binder lit) ->
+  (Binder lit -> a) ->
+  [([a], Maybe Guard)] -> ([[a]], Maybe Bool)
+check env toB fromB cas = (first $ map fromBs) . unwrapCheck $ check' env alt
   where
   alt = map toAlternative cas
 

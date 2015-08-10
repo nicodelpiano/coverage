@@ -23,5 +23,10 @@ binderToNat (Tagged "Zero" (Var Nothing)) = Zero
 binderToNat (Tagged "Succ" b) = Succ $ binderToNat b
 binderToNat _ = error "This should not be happening."
 
-checkNat :: [([NatBinder], Maybe Guard)] -> [[NatBinder]]
-checkNat = check natToBinder binderToNat
+env :: Environment
+env =
+  [ ("Zero", 0)
+  , ("Succ", 1)]
+
+checkNat :: [([NatBinder], Maybe Guard)] -> ([[NatBinder]], Maybe Bool)
+checkNat = check env natToBinder binderToNat
