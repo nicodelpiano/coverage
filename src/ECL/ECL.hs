@@ -30,7 +30,7 @@ type Binders lit = [Binder lit]
 data Binder lit
   = Var (Maybe Name)
   | Lit lit
-  | Tagged Name (Binder lit)
+  | Tagged Name [Binder lit]
   | Product (Binders lit)
   | Record [(Name, Binder lit)]
   deriving (Show, Eq)
@@ -111,12 +111,12 @@ missingSingle env (Var _) cb@(Tagged con _) =
   where
   -- for now, we have arity 1
   tag :: (Eq lit) => (Name, Arity) -> Binder lit
-  tag (n, _) = Tagged n wildcard
+  tag (n, a) = Tagged n $ initialize a
 
   tagEnv :: (Eq lit) => [Binder lit]
-  tagEnv = foldr (\x xs -> tag x : xs) [] $ envInfo env $ con
-missingSingle env c@(Tagged tag b) (Tagged tag' b')
-  | tag == tag' = let (b'', pr) = missingSingle env b b' in (map (Tagged tag) b'', pr)
+  tagEnv = map tag $ envInfo env $ con
+missingSingle env c@(Tagged tag bs) (Tagged tag' bs')
+  | tag == tag' = let (bs'', pr) = missingMultiple env bs bs' in (map (Tagged tag) bs'', pr)
   | otherwise = ([c], pure False)
 missingSingle env (Var _) (Record bs) =
   (map (Record . zip names) $ miss, pr)

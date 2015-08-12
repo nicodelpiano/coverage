@@ -16,13 +16,13 @@ data NatBinder = NullBinder       -- Wildcard binder
 
 natToBinder :: NatBinder -> Binder NatBinder
 natToBinder NullBinder = Var Nothing
-natToBinder Zero = Tagged "Zero" $ Var Nothing
-natToBinder (Succ nb) = Tagged "Succ" $ natToBinder nb
+natToBinder Zero = Tagged "Zero" []
+natToBinder (Succ nb) = Tagged "Succ" [natToBinder nb]
 
 binderToNat :: Binder NatBinder -> NatBinder
 binderToNat (Var Nothing) = NullBinder
-binderToNat (Tagged "Zero" (Var Nothing)) = Zero
-binderToNat (Tagged "Succ" b) = Succ $ binderToNat b
+binderToNat (Tagged "Zero" []) = Zero
+binderToNat (Tagged "Succ" [b]) = Succ $ binderToNat b
 binderToNat _ = error "The given binder is not valid."
 
 env :: String -> [(String, Int)]
