@@ -19,22 +19,22 @@ data TreeBinder a = NullBinder
 
 treeToBinder :: (Eq a) => TreeBinder a -> Binder a
 treeToBinder NullBinder = Var Nothing
-treeToBinder Empty = Tagged "Empty" []
-treeToBinder (Leaf l) = Tagged "Leaf" [Lit l]
-treeToBinder (Branch l r) = Tagged "Branch" [treeToBinder l, treeToBinder r]
+treeToBinder Empty = Tagged "Empty" $ Var Nothing
+treeToBinder (Leaf l) = Tagged "Leaf" $ Lit l
+treeToBinder (Branch l r) = Tagged "Branch" $ Product [treeToBinder l, treeToBinder r]
 
 binderToTree :: (Eq a) => Binder a -> TreeBinder (Maybe a)
 binderToTree (Var Nothing) = NullBinder
-binderToTree (Tagged "Empty" []) = Empty
-binderToTree (Tagged "Leaf" [Lit l]) = Leaf $ Just l
-binderToTree (Tagged "Leaf" [Var _]) = Leaf Nothing
-binderToTree (Tagged "Branch" [l, r]) = Branch (binderToTree l) (binderToTree r)
+binderToTree (Tagged "Empty" _) = Empty
+binderToTree (Tagged "Leaf" (Lit l)) = Leaf $ Just l
+binderToTree (Tagged "Leaf" (Var _)) = Leaf Nothing
+binderToTree (Tagged "Branch" (Product [l, r])) = Branch (binderToTree l) (binderToTree r)
 binderToTree _ = error "The given binder is not valid."
 
-env :: String -> [(String, Int)]
+env :: String -> Maybe [(String, Int)]
 env = go
   where
-  maps = [("Empty", 0), ("Leaf", 1), ("Branch", 2)]
+  maps = Just [("Empty", 0), ("Leaf", 1), ("Branch", 2)]
 
   go "Empty" = maps
   go "Leaf" = maps

@@ -16,6 +16,7 @@ import Data.Function (on)
 import Data.Maybe (fromMaybe)
 
 import Control.Applicative (pure, (<$>), liftA2)
+import Control.Arrow (first)
 
 -- | A type synonym for names. 
 type Name = String
@@ -30,7 +31,7 @@ type Binders lit = [Binder lit]
 data Binder lit
   = Var (Maybe Name)
   | Lit lit
-  | Tagged Name [Binder lit]
+  | Tagged Name (Binder lit)
   | Product (Binders lit)
   | Record [(Name, Binder lit)]
   deriving (Show, Eq)
@@ -42,13 +43,13 @@ type Arity = Int
 --
 -- The language implementor should provide an environment to let
 -- the checker lookup for constructors' names (just for one type for now).
-newtype Environment = Environment { envInfo :: Name -> [(Name, Arity)] }
+newtype Environment = Environment { envInfo :: Name -> Maybe [(Name, Arity)] }
 
-makeEnv :: (Name -> [(Name, Arity)]) -> Environment
+makeEnv :: (Name -> Maybe [(Name, Arity)]) -> Environment
 makeEnv info = Environment { envInfo = info }
 
 defaultEnv :: Environment
-defaultEnv = Environment { envInfo = (\_ -> []) }
+defaultEnv = makeEnv (\_ -> Nothing)
 
 -- | Guards and alternatives
 -- 
@@ -106,16 +107,23 @@ genericMerge f bsl@((s, b):bs) bsr@((s', b'):bs')
 -- values represented by another.
 missingSingle :: (Eq lit) => Environment -> Binder lit -> Binder lit -> ([Binder lit], Maybe Bool)
 missingSingle _ _ (Var _) = ([], pure True)
+missingSingle env (Var _) (Product ps) =
+  first (map Product) $ missingMultiple env (initialize $ length ps) ps
+missingSingle env p@(Product ps) (Product ps')
+  | length ps == length ps' = first (map Product) $ missingMultiple env ps ps'
+  | otherwise = ([p], pure False)
 missingSingle env (Var _) cb@(Tagged con _) =
   (concatMap (\cp -> fst $ missingSingle env cp cb) $ tagEnv, pure True)
   where
   tag :: (Eq lit) => (Name, Arity) -> Binder lit
-  tag (n, a) = Tagged n $ initialize a
+  tag (n, 0) = Tagged n $ wildcard
+  tag (n, 1) = Tagged n $ wildcard
+  tag (n, a) = Tagged n $ Product $ initialize a
 
   tagEnv :: (Eq lit) => [Binder lit]
-  tagEnv = map tag $ envInfo env $ con
+  tagEnv = map tag . fromMaybe [] . envInfo env $ con
 missingSingle env c@(Tagged tag bs) (Tagged tag' bs')
-  | tag == tag' = let (bs'', pr) = missingMultiple env bs bs' in (map (Tagged tag) bs'', pr)
+  | tag == tag' = let (bs'', pr) = missingSingle env bs bs' in (map (Tagged tag) bs'', pr)
   | otherwise = ([c], pure False)
 missingSingle env (Var _) (Record bs) =
   (map (Record . zip names) $ miss, pr)

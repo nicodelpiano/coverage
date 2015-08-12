@@ -16,20 +16,20 @@ data NatBinder = NullBinder       -- Wildcard binder
 
 natToBinder :: NatBinder -> Binder NatBinder
 natToBinder NullBinder = Var Nothing
-natToBinder Zero = Tagged "Zero" []
-natToBinder (Succ nb) = Tagged "Succ" [natToBinder nb]
+natToBinder Zero = Tagged "Zero" $ Var Nothing
+natToBinder (Succ nb) = Tagged "Succ" $ natToBinder nb
 
 binderToNat :: Binder NatBinder -> NatBinder
 binderToNat (Var Nothing) = NullBinder
-binderToNat (Tagged "Zero" []) = Zero
-binderToNat (Tagged "Succ" [b]) = Succ $ binderToNat b
+binderToNat (Tagged "Zero" _) = Zero
+binderToNat (Tagged "Succ" b) = Succ $ binderToNat b
 binderToNat _ = error "The given binder is not valid."
 
-env :: String -> [(String, Int)]
-env "Zero" =
+env :: String -> Maybe [(String, Int)]
+env "Zero" = Just $
   [ ("Zero", 0)
   , ("Succ", 1)]
-env "Succ" =
+env "Succ" = Just $
   [ ("Zero", 0)
   , ("Succ", 1)]
 env _ = error "The given name is not a valid constructor."
