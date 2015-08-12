@@ -109,7 +109,6 @@ missingSingle _ _ (Var _) = ([], pure True)
 missingSingle env (Var _) cb@(Tagged con _) =
   (concatMap (\cp -> fst $ missingSingle env cp cb) $ tagEnv, pure True)
   where
-  -- for now, we have arity 1
   tag :: (Eq lit) => (Name, Arity) -> Binder lit
   tag (n, a) = Tagged n $ initialize a
 
