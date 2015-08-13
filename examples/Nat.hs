@@ -35,10 +35,9 @@ env "Succ" = Just $
 env _ = error "The given name is not a valid constructor."
 
 checkNat :: [([NatBinder], Maybe Guard)] -> ([[NatBinder]], [[NatBinder]])
-checkNat def = (second $ map fromBinder . snd)
-               $ (first $ map fromBinder)
-               . unwrapCheck
-               $ check (makeEnv env) toBinder
+checkNat def =
+  let ch = check (makeEnv env) toBinder
+  in (map fromBinder $ getUncovered ch, map fromBinder . snd $ getRedundant ch)
   where
   toBinder = map (\(nbs, g) -> (map natToBinder nbs, g)) def
 

@@ -8,7 +8,7 @@ module ECL.ECL
   , Binder(..)
   , Guard(..)
   , makeEnv
-  , unwrapCheck
+  , Check(..)
   ) where
 
 import Data.List (foldl', nub, sortBy)
@@ -74,9 +74,6 @@ makeCheck bs red = Check
   { getUncovered = bs
   , getRedundant = red }
 
-unwrapCheck :: Check lit -> ([Binders lit], (Maybe Bool, [Binders lit]))
-unwrapCheck ch = (getUncovered ch, getRedundant ch)
-
 applyUncovered :: ([Binders lit] -> [Binders lit]) -> Check lit -> Check lit
 applyUncovered f c = makeCheck (f $ getUncovered c) (getRedundant c)
 
@@ -116,12 +113,12 @@ missingSingle env (Var _) cb@(Tagged con _) =
   (concatMap (\cp -> fst $ missingSingle env cp cb) $ tagEnv, pure True)
   where
   tag :: (Eq lit) => (Name, Arity) -> Binder lit
-  tag (n, 0) = Tagged n $ wildcard
-  tag (n, 1) = Tagged n $ wildcard
-  tag (n, a) = Tagged n $ Product $ initialize a
+  tag (n, _) = Tagged n wildcard
 
   tagEnv :: (Eq lit) => [Binder lit]
-  tagEnv = map tag . fromMaybe [] . envInfo env $ con
+  tagEnv = map tag
+           . fromMaybe (error $ "Constructor name '" ++ con ++ "' not in the scope of the current environment in missingSingle.")
+           . envInfo env $ con
 missingSingle env c@(Tagged tag bs) (Tagged tag' bs')
   | tag == tag' = let (bs'', pr) = missingSingle env bs bs' in (map (Tagged tag) bs'', pr)
   | otherwise = ([c], pure False)

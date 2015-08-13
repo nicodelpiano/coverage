@@ -28,6 +28,7 @@ binderToTree (Var Nothing) = NullBinder
 binderToTree (Tagged "Empty" _) = Empty
 binderToTree (Tagged "Leaf" (Lit l)) = Leaf $ Just l
 binderToTree (Tagged "Leaf" (Var _)) = Leaf Nothing
+binderToTree (Tagged "Branch" (Var _)) = Branch NullBinder NullBinder
 binderToTree (Tagged "Branch" (Product [l, r])) = Branch (binderToTree l) (binderToTree r)
 binderToTree _ = error "The given binder is not valid."
 
@@ -42,10 +43,9 @@ env = go
   go _ = error "The given name is not a valid constructor."
 
 checkTree :: (Eq a) => [([TreeBinder a], Maybe Guard)] -> ([[TreeBinder (Maybe a)]], [[TreeBinder (Maybe a)]])
-checkTree def = (second $ map fromBinder . snd)
-               $ (first $ map fromBinder)
-               . unwrapCheck
-               $ check (makeEnv env) toBinder
+checkTree def =
+  let ch = check (makeEnv env) toBinder
+  in (map fromBinder $ getUncovered ch, map fromBinder . snd $ getRedundant ch)
   where
   toBinder = map (\(nbs, g) -> (map treeToBinder nbs, g)) def
 
