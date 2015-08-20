@@ -32,10 +32,10 @@ binderToTree (Tagged "Branch" (Var _)) = Branch NullBinder NullBinder
 binderToTree (Tagged "Branch" (Product [l, r])) = Branch (binderToTree l) (binderToTree r)
 binderToTree _ = error "The given binder is not valid."
 
-env :: String -> Maybe [(String, Int)]
+env :: String -> Maybe [String]
 env = go
   where
-  maps = Just [("Empty", 0), ("Leaf", 1), ("Branch", 2)]
+  maps = Just ["Empty", "Leaf", "Branch"]
 
   go "Empty" = maps
   go "Leaf" = maps

@@ -25,13 +25,11 @@ binderToNat (Tagged "Zero" _) = Zero
 binderToNat (Tagged "Succ" b) = Succ $ binderToNat b
 binderToNat _ = error "The given binder is not valid."
 
-env :: String -> Maybe [(String, Int)]
+env :: String -> Maybe [String]
 env "Zero" = Just $
-  [ ("Zero", 0)
-  , ("Succ", 1)]
+  ["Zero", "Succ"]
 env "Succ" = Just $
-  [ ("Zero", 0)
-  , ("Succ", 1)]
+  ["Zero", "Succ"]
 env _ = error "The given name is not a valid constructor."
 
 checkNat :: [([NatBinder], Maybe Guard)] -> ([[NatBinder]], [[NatBinder]])
