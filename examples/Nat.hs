@@ -1,6 +1,21 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  Nat
+-- Copyright   :  (c) 2015 Nicolas Del Piano
+-- License     :  MIT
+--
+-- Maintainer  :  Nicolas Del Piano <ndel314@gmail.com>
+-- Stability   :  experimental
+-- Portability :
+--
+-- |
+-- Example using nats. 
+--
+-----------------------------------------------------------------------------
+
 module Nat where
 
-import ECL.ECL
+import Exhaustive
 
 import Control.Arrow (first, second)
 
@@ -25,20 +40,21 @@ binderToNat (Tagged "Zero" _) = Zero
 binderToNat (Tagged "Succ" b) = Succ $ binderToNat b
 binderToNat _ = error "The given binder is not valid."
 
-env :: String -> Maybe [(String, Int)]
+env :: String -> Maybe [String]
 env "Zero" = Just $
-  [ ("Zero", 0)
-  , ("Succ", 1)]
+  ["Zero", "Succ"]
 env "Succ" = Just $
-  [ ("Zero", 0)
-  , ("Succ", 1)]
+  ["Zero", "Succ"]
 env _ = error "The given name is not a valid constructor."
 
 checkNat :: [([NatBinder], Maybe Guard)] -> ([[NatBinder]], [[NatBinder]])
 checkNat def =
   let ch = check (makeEnv env) toBinder
-  in (map fromBinder $ getUncovered ch, map fromBinder . snd $ getRedundant ch)
+  in (map fromBinder $ getUncovered ch, map fromBinder $ fromRedundant $ getRedundant ch)
   where
   toBinder = map (\(nbs, g) -> (map natToBinder nbs, g)) def
 
   fromBinder = map binderToNat
+
+  fromRedundant (NotRedundant bs) = bs
+  fromRedundant _ = []
