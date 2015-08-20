@@ -1,6 +1,6 @@
 module Tree where
 
-import ECL.ECL
+import Exhaustive
 
 import Control.Arrow (first, second)
 
