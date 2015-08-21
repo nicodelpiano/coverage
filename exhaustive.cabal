@@ -18,6 +18,10 @@ extra-source-files:
   examples/*.hs
   tests/*.hs
 
+source-repository head
+    type: git
+    location: https://github.com/nicodelpiano/exhaustive.git
+
 library
   ghc-options:         -Wall
   exposed-modules:     Exhaustive
