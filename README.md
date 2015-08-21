@@ -8,7 +8,7 @@ This package provides a tool that performs exhaustivity and redundancy checking 
 
 Installation:
 
-    cabal install exhaustive
+    cabal install coverage
 
 You can see examples of usage in the `examples` directory and read the Haddock documentation.
 
