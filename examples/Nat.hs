@@ -3,6 +3,7 @@ module Nat where
 import Exhaustive
 
 import Control.Arrow (first, second)
+import Control.Applicative ((<$>))
 
 -- | Nat
 data Nat = Z | S Nat
@@ -35,7 +36,7 @@ env _ = error "The given name is not a valid constructor."
 checkNat :: [([NatBinder], Maybe Guard)] -> ([[NatBinder]], [[NatBinder]])
 checkNat def =
   let ch = check (makeEnv env) toBinder
-  in (map fromBinder $ getUncovered ch, map fromBinder . snd $ getRedundant ch)
+  in (map fromBinder $ getUncovered ch, map fromBinder $ fromRedundant $ getRedundant ch)
   where
   toBinder = map (\(nbs, g) -> (map natToBinder nbs, g)) def
 

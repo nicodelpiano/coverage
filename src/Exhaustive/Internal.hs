@@ -9,7 +9,7 @@ import Data.List (sortBy)
 import Data.Function (on)
 import Data.Maybe (fromMaybe)
 
-import Control.Applicative (pure, liftA2)
+import Control.Applicative (Applicative, (<*>), pure, liftA2)
 import Control.Arrow (first)
 
 -- | A type synonym for names. 
@@ -64,12 +64,25 @@ instance Functor Redundant where
   fmap _ Redundant        = Redundant
   fmap f (NotRedundant r) = NotRedundant $ f r
 
-makeRedundant :: [Binders lit] -> Maybe Bool -> Redundant [Binders lit]
-makeRedundant bs = go
+instance Applicative Redundant where
+  pure = NotRedundant
+
+  DontKnow <*> _         = DontKnow
+  Redundant <*> _        = Redundant
+  (NotRedundant f) <*> m = fmap f m
+
+instance Monad Redundant where
+  return = NotRedundant
+
+  DontKnow >>= _          = DontKnow
+  Redundant >>= _         = Redundant
+  (NotRedundant bs) >>= g = g bs 
+
+fromRedundant :: Redundant [Binders lit] -> [Binders lit]
+fromRedundant = go
   where
-  go Nothing = DontKnow
-  go (Just False) = Redundant
-  go (Just True) = NotRedundant bs
+  go (NotRedundant bs) = bs
+  go _ = []
 
 -- | Check wraps both uncovered and redundant cases.
 data Check lit = Check
@@ -110,15 +123,15 @@ genericMerge f bsl@((s, b):bs) bsr@((s', b'):bs')
 
 -- | Returns the uncovered set after one binder is applied to the set of
 -- values represented by another.
-missingSingle :: (Eq lit) => Environment -> Binder lit -> Binder lit -> ([Binder lit], Maybe Bool)
-missingSingle _ _ (Var _) = ([], pure True)
+missingSingle :: (Eq lit) => Environment -> Binder lit -> Binder lit -> ([Binder lit], Redundant ()) 
+missingSingle _ _ (Var _) = ([], pure ())
 missingSingle env (Var _) (Product ps) =
   first (map Product) $ missingMultiple env (initialize $ length ps) ps
 missingSingle env p@(Product ps) (Product ps')
   | length ps == length ps' = first (map Product) $ missingMultiple env ps ps'
-  | otherwise = ([p], pure False)
+  | otherwise = ([p], Redundant)
 missingSingle env (Var _) cb@(Tagged con _) =
-  (concatMap (\cp -> fst $ missingSingle env cp cb) $ tagEnv, pure True)
+  (concatMap (\cp -> fst $ missingSingle env cp cb) $ tagEnv, pure ())
   where
   tag :: (Eq lit) => Name -> Binder lit
   tag n = Tagged n wildcard
@@ -129,7 +142,7 @@ missingSingle env (Var _) cb@(Tagged con _) =
            . envInfo env $ con
 missingSingle env c@(Tagged tag bs) (Tagged tag' bs')
   | tag == tag' = let (bs'', pr) = missingSingle env bs bs' in (map (Tagged tag) bs'', pr)
-  | otherwise = ([c], pure False)
+  | otherwise = ([c], Redundant)
 missingSingle env (Var _) (Record bs) =
   (map (Record . zip names) $ miss, pr)
   where
@@ -155,9 +168,9 @@ missingSingle env (Record bs) (Record bs') =
 
   (sortedNames, binders) = unzip $ genericMerge (compBS (Var Nothing)) sbs sbs'
 missingSingle _ b@(Lit l) (Lit l')
-  | l == l' = ([], pure True)
-  | otherwise = ([b], pure False) 
-missingSingle _ b _ = ([b], Nothing) 
+  | l == l' = ([], pure ())
+  | otherwise = ([b], Redundant) 
+missingSingle _ b _ = ([b], DontKnow) 
 
 -- |
 -- Generates a list of initial binders.
@@ -168,11 +181,11 @@ initialize = flip replicate $ wildcard
 -- |
 -- `missingMultiple` returns the whole set of uncovered cases.
 --
-missingMultiple :: (Eq lit) => Environment -> Binders lit -> Binders lit -> ([Binders lit], Maybe Bool)
+missingMultiple :: (Eq lit) => Environment -> Binders lit -> Binders lit -> ([Binders lit], Redundant ())
 missingMultiple env = go
   where
-  go [] _ = ([], pure True)
-  go (x:xs) (y:ys) = (map (: xs) missed ++ fmap (x :) missed', liftA2 (&&) pr1 pr2)
+  go [] [] = ([], pure ())
+  go (x:xs) (y:ys) = (map (: xs) missed ++ fmap (x :) missed', liftA2 (\() () -> ()) pr1 pr2)
     where
     (missed, pr1) = missingSingle env x y
     (missed', pr2) = go xs ys
@@ -181,13 +194,13 @@ missingMultiple env = go
 -- |
 -- `missingCases` applies `missingMultiple` to an alternative.
 --
-missingCases :: (Eq lit) => Environment -> Binders lit -> Alternative lit -> ([Binders lit], Maybe Bool)
+missingCases :: (Eq lit) => Environment -> Binders lit -> Alternative lit -> ([Binders lit], Redundant ())
 missingCases env unc = missingMultiple env unc . fst
 
 -- |
 -- `missingAlternative` is `missingCases` with guard handling.
 --
-missingAlternative :: (Eq lit) => Environment -> Alternative lit -> Binders lit -> ([Binders lit], Maybe Bool)
+missingAlternative :: (Eq lit) => Environment -> Alternative lit -> Binders lit -> ([Binders lit], Redundant ())
 missingAlternative env alt unc
   | isExhaustiveGuard $ snd alt = mcases
   | otherwise = ([unc], snd mcases)
