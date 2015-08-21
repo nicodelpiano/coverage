@@ -1,10 +1,10 @@
-## Exhaustive
+## Coverage
 
 ### An exhaustivity checking library
 
 Copyright 2015, Nicolas Del Piano <ndel314@gmail.com>.
 
-This package provides a tool that performs exhaustivity and redundancy checking over your language data types.
+This package provides a tool that performs exhaustivity and redundancy checking over custom pattern matching definitions.
 
 Installation:
 
@@ -14,6 +14,6 @@ You can see examples of usage in the `examples` directory and read the Haddock d
 
 #### Tests
 
-For running tests:
+For running tests (in the `tests` directory):
 
-    runhaskell tests/Spec.hs
+    runhaskell Spec.hs

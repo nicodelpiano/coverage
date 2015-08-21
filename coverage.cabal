@@ -1,8 +1,8 @@
-name:                exhaustive
+name:                coverage
 version:             0.1.0.0
 synopsis:            Exhaustivity Checking Library
-homepage:            https://github.com/nicodelpiano/exhaustive
-bug-reports:         https://github.com/nicodelpiano/exhaustive/issues
+homepage:            https://github.com/nicodelpiano/coverage
+bug-reports:         https://github.com/nicodelpiano/coverage/issues
 description:         A library for exhaustivity and redundancy checking.
 license:             MIT
 license-file:        LICENSE
@@ -20,12 +20,12 @@ extra-source-files:
 
 source-repository head
     type: git
-    location: https://github.com/nicodelpiano/exhaustive.git
+    location: https://github.com/nicodelpiano/complete.git
 
 library
   ghc-options:         -Wall
-  exposed-modules:     Exhaustive
-                       Exhaustive.Internal
+  exposed-modules:     Coverage
+                       Coverage.Internal
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.7 && <4.8
@@ -42,7 +42,9 @@ test-suite tests
   main-is:
       Spec.hs
   other-modules:
-      ExhaustiveSpec
+      CoverageSpec
+      CoverageSupport
+      CoverageUnitSpec
   build-depends:
-      base >=4.7 && <4.8, exhaustive, QuickCheck >=2.7, hspec   == 2.*
+      base >=4.7 && <4.8, coverage, QuickCheck >=2.7, hspec   == 2.*
   default-language:    Haskell2010

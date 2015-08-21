@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  ExhaustiveSupport
+-- Module      :  CoverageSupport
 -- Copyright   :  (c) 2015 Nicolas Del Piano
 -- License     :  MIT
 --
@@ -13,9 +13,9 @@
 --
 -----------------------------------------------------------------------------
    
-module ExhaustiveSupport where
+module CoverageSupport where
 
-import Exhaustive.Internal
+import Coverage.Internal
 
 import Control.Monad (liftM, liftM2, liftM3)
 

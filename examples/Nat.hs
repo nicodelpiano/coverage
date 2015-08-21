@@ -15,7 +15,7 @@
 
 module Nat where
 
-import Exhaustive
+import Coverage
 
 import Control.Arrow (first, second)
 

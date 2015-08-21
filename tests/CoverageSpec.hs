@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  ExhaustiveSpec
+-- Module      :  CoverageSpec
 -- Copyright   :  (c) 2015 Nicolas Del Piano
 -- License     :  MIT
 --
@@ -13,11 +13,11 @@
 --
 -----------------------------------------------------------------------------
 
-module ExhaustiveSpec (main, spec) where
+module CoverageSpec (main, spec) where
 
-import Exhaustive
-import Exhaustive.Internal
-import ExhaustiveSupport
+import Coverage
+import Coverage.Internal
+import CoverageSupport
 
 import Test.Hspec
 import Test.HUnit
