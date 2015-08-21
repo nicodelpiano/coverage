@@ -11,3 +11,9 @@ Installation:
     cabal install exhaustive
 
 You can see examples of usage in the `examples` directory and read the Haddock documentation.
+
+#### Tests
+
+For running tests:
+
+    runhaskell tests/Spec.hs
