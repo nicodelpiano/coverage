@@ -122,7 +122,7 @@ spec = do
         (getUncovered $ check env record_def1) `shouldBe` []
 
       it "product_def2 is not exhaustive" $ do
-        (getUncovered $ check env record_def1) `shouldBe` []
+        (getUncovered $ check env record_def2) `shouldBe` [[Record [("bar", s wildcard), ("foo", s wildcard)]], [Record [("bar", wildcard), ("foo", s $ s wildcard)]]]
 
 main :: IO ()
 main = hspec spec
