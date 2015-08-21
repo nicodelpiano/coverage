@@ -20,7 +20,7 @@ extra-source-files:
 
 source-repository head
     type: git
-    location: https://github.com/nicodelpiano/complete.git
+    location: https://github.com/nicodelpiano/coverage.git
 
 library
   ghc-options:         -Wall
