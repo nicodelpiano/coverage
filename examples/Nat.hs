@@ -56,5 +56,5 @@ checkNat def =
 
   fromBinder = map binderToNat
 
-  fromRedundant (NotRedundant bs) = bs
+  fromRedundant (Redundant bs) = bs
   fromRedundant _ = []

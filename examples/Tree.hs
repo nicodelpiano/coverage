@@ -66,5 +66,5 @@ checkTree def =
 
   fromBinder = map binderToTree
 
-  fromRedundant (NotRedundant bs) = bs
+  fromRedundant (Redundant bs) = bs
   fromRedundant _ = []

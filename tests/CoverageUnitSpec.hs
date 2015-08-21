@@ -59,7 +59,7 @@ tagged_def5 = [([wildcard], Nothing), ([z], Nothing)]
 tagged_def6 :: [Alternative ()]
 tagged_def6 = [([wildcard, wildcard, wildcard], Nothing), ([z, z, z], Nothing)]
 
-fromRedundant (NotRedundant bs) = bs
+fromRedundant (Redundant bs) = bs
 fromRedundant _ = []
 
 lit_def1 :: [Alternative String]
