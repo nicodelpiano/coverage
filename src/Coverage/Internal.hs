@@ -65,22 +65,22 @@ data Guard = CatchAll | Opaque
 type Alternative lit = (Binders lit, Maybe Guard)
 
 -- | Data-type for redundant cases representation.
-data Redundant a = DontKnow | Redundant | NotRedundant a
+data Redundant a = DontKnow | NotRedundant | Redundant a
   deriving (Show, Eq)
 
 -- | Functor instance for Redundant (TODO: proofs).
 instance Functor Redundant where
-  fmap _ DontKnow         = DontKnow
-  fmap _ Redundant        = Redundant
-  fmap f (NotRedundant r) = NotRedundant $ f r
+  fmap _ DontKnow      = DontKnow
+  fmap _ NotRedundant  = NotRedundant
+  fmap f (Redundant r) = Redundant $ f r
 
 -- | Applicative instance for Redundant.
 instance Applicative Redundant where
-  pure = NotRedundant
+  pure = Redundant
 
-  DontKnow <*> _         = DontKnow
-  Redundant <*> _        = Redundant
-  (NotRedundant f) <*> m = fmap f m
+  DontKnow <*> _      = DontKnow
+  NotRedundant <*> _  = NotRedundant
+  (Redundant f) <*> m = fmap f m
 
 -- | Check wraps both uncovered and redundant cases.
 data Check lit = Check

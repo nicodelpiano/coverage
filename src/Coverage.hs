@@ -35,7 +35,7 @@ import Control.Applicative ((<$>), liftA2)
 check :: (Eq lit) => Environment -> [Alternative lit] -> Check lit
 check env cas = applyRedundant (fmap nub) . applyUncovered nub . foldl' step initial $ cas
   where
-  initial = makeCheck [initialize $ length . fst . head $ cas] $ NotRedundant []
+  initial = makeCheck [initialize $ length . fst . head $ cas] $ Redundant []
 
   step :: (Eq lit) => Check lit -> Alternative lit -> Check lit
   step ch ca =
@@ -46,5 +46,5 @@ check env cas = applyRedundant (fmap nub) . applyUncovered nub . foldl' step ini
       where
       mr :: Redundant [Binders lit] -> Maybe Bool
       mr DontKnow = Nothing
-      mr Redundant = Just False
-      mr (NotRedundant _) = Just True
+      mr NotRedundant = Just False
+      mr (Redundant _) = Just True
