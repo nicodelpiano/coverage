@@ -1,5 +1,5 @@
 name:                coverage
-version:             0.1.0.1
+version:             0.1.0.2
 synopsis:            Exhaustivity Checking Library
 homepage:            https://github.com/nicodelpiano/coverage
 bug-reports:         https://github.com/nicodelpiano/coverage/issues
