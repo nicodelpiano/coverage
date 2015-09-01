@@ -15,8 +15,8 @@
 
 module CoverageUnitSpec (main, spec) where
 
-import Coverage
-import Coverage.Internal
+import Control.Coverage
+import Control.Coverage.Internal
 import CoverageSupport
 
 import Test.Hspec

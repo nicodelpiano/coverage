@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  Coverage
+-- Module      :  Control.Coverage
 -- Copyright   :  (c) 2015 Nicolas Del Piano
 -- License     :  MIT
 --
@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Coverage
+module Control.Coverage
   ( check
   , Binder(..)
   , Guard(..)
@@ -22,7 +22,7 @@ module Coverage
   , Redundant(..)
   ) where
 
-import Coverage.Internal
+import Control.Coverage.Internal
 
 import Data.List (foldl', nub)
 import Data.Maybe (fromMaybe)

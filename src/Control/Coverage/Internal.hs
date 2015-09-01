@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 --
--- Module      :  Coverage.Internal
+-- Module      :  Control.Coverage.Internal
 -- Copyright   :  (c) 2015 Nicolas Del Piano
 -- License     :  MIT
 --
@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Coverage.Internal where
+module Control.Coverage.Internal where
 
 import Data.List (sortBy)
 import Data.Function (on)

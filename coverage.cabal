@@ -9,7 +9,7 @@ license-file:        LICENSE
 author:              Nicolas Del Piano <ndel314@gmail.com>
 maintainer:          Nicolas Del Piano <ndel314@gmail.com>
 copyright:           (c) 2015 Nicolas Del Piano
-category:            Development
+category:            Control
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
@@ -24,8 +24,8 @@ source-repository head
 
 library
   ghc-options:         -Wall
-  exposed-modules:     Coverage
-                       Coverage.Internal
+  exposed-modules:     Control.Coverage
+                       Control.Coverage.Internal
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.7 && <4.8

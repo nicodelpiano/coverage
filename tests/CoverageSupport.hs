@@ -15,7 +15,7 @@
    
 module CoverageSupport where
 
-import Coverage.Internal
+import Control.Coverage.Internal
 
 import Control.Monad (liftM, liftM2, liftM3)
 
