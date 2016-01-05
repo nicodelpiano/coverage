@@ -1,4 +1,4 @@
-## Coverage
+## coverage
 
 ### An exhaustivity checking library
 
