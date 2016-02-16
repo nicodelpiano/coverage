@@ -15,7 +15,7 @@
 
 module Tree where
 
-import Coverage
+import Control.Coverage
 
 import Control.Arrow (first, second)
 
