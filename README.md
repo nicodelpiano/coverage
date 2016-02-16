@@ -14,6 +14,10 @@ You can see examples of usage in the `examples` directory and read the Haddock d
 
 #### Tests
 
-For running tests (in the `tests` directory):
+For running tests just execute:
+
+    cabal test
+
+or, if you have `hspec-discover` (inside the `tests` directory run):
 
     runhaskell Spec.hs
